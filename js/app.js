@@ -144,7 +144,7 @@ function loadGraph(data) {
   edges.add(data.edges.map(styleEdge));
 
   typesPresent = TYPE_ORDER.filter((t) => data.nodes.some((n) => n.type === t));
-  activeTypes = new Set(typesPresent);
+  activeTypes = new Set(typesPresent.filter((t) => t === "process"));
 
   buildFilterUI(data.nodes);
   buildLegend();
