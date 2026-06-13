@@ -97,6 +97,16 @@
         <p class="spinner__text">Processing…</p>
       </div>
     </div>
+
+    <!-- Process tree picker modal -->
+    <div id="treeModal" class="modal-overlay">
+      <div class="modal">
+        <h2 class="modal__title">Select Process Tree</h2>
+        <p class="modal__desc">Multiple process roots detected. Choose which to display:</p>
+        <div id="modalTreeList" class="modal__list"></div>
+        <button id="modalLoadBtn" class="btn btn--primary" type="button">Load</button>
+      </div>
+    </div>
   </div>
 
   <script src="js/mock-data.js"></script>

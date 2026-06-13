@@ -213,6 +213,13 @@ if (treeSelect) {
 /* ---- Spinner ------------------------------------------------------------ */
 const spinnerEl = document.getElementById("spinner");
 
+/* ---- Process tree picker modal ----------------------------------------- */
+const treeModal = document.getElementById("treeModal");
+const modalTreeList = document.getElementById("modalTreeList");
+const modalLoadBtn = document.getElementById("modalLoadBtn");
+
+let pendingStatus = null;
+
 /* ---- Import CSV --------------------------------------------------------- */
 const importBtn = document.getElementById("importBtn");
 const fileInput = document.getElementById("fileInput");
@@ -235,14 +242,42 @@ if (importBtn && fileInput) {
         fullGraph = buildGraphFromEvents(events);
         populateTreeSelect(fullGraph);
         treePanel.hidden = false;
-        setLayoutLive(); // let the new graph lay out
+        setLayoutLive();
 
-        // Default to the first (largest) root tree.
-        loadGraph(extractProcessTree(fullGraph, treeSelect.value));
-
-        const errNote = errors.length ? `, ${errors.length} skipped` : "";
-        setStatus(`${file.name} — ${events.length} events, ${fullGraph.roots.length} trees${errNote}`, "loaded");
         spinnerEl.classList.remove("is-visible");
+
+        if (fullGraph.roots.length > 1) {
+          pendingStatus = { name: file.name, events: events.length, roots: fullGraph.roots.length, errors: errors.length };
+          modalTreeList.innerHTML = "";
+          const rootProcs = fullGraph.processes
+            .filter((p) => fullGraph.roots.includes(p.pid))
+            .sort((a, b) => b.descendantCount - a.descendantCount || a.name.localeCompare(b.name));
+
+          rootProcs.forEach((p, i) => {
+            const label = document.createElement("label");
+            label.className = "modal__option";
+            label.innerHTML = `
+              <input type="radio" name="treeRoot" value="${p.pid}" ${i === 0 ? "checked" : ""}>
+              <span class="modal__option-label">${p.name} (P-${p.pid})</span>
+              <span class="modal__option-count">${p.descendantCount + 1} procs</span>`;
+            modalTreeList.appendChild(label);
+          });
+
+          // "All processes" option
+          const allLabel = document.createElement("label");
+          allLabel.className = "modal__option";
+          allLabel.innerHTML = `
+            <input type="radio" name="treeRoot" value="*">
+            <span class="modal__option-label">All processes</span>
+            <span class="modal__option-count">${fullGraph.processes.length} procs</span>`;
+          modalTreeList.appendChild(allLabel);
+
+          treeModal.classList.add("is-visible");
+        } else {
+          const errNote = errors.length ? `, ${errors.length} skipped` : "";
+          setStatus(`${file.name} — ${events.length} events, ${fullGraph.roots.length} trees${errNote}`, "loaded");
+          loadGraph(extractProcessTree(fullGraph, treeSelect.value));
+        }
       } catch (err) {
         console.error("Import failed:", err);
         setStatus(`${file.name} — parse failed`, "error");
@@ -254,7 +289,19 @@ if (importBtn && fileInput) {
       spinnerEl.classList.remove("is-visible");
     };
     reader.readAsText(file);
-    fileInput.value = ""; // allow re-importing the same file
+    fileInput.value = "";
+  });
+}
+
+if (modalLoadBtn) {
+  modalLoadBtn.addEventListener("click", () => {
+    const selected = modalTreeList.querySelector('input[name="treeRoot"]:checked');
+    if (!selected) return;
+    const s = pendingStatus;
+    const errNote = s.errors ? `, ${s.errors} skipped` : "";
+    setStatus(`${s.name} — ${s.events} events, ${s.roots} trees${errNote}`, "loaded");
+    loadGraph(extractProcessTree(fullGraph, selected.value));
+    treeModal.classList.remove("is-visible");
   });
 }
 
