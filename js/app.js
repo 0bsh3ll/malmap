@@ -137,12 +137,9 @@ function buildLegend() {
 }
 
 /* ---- Load / reload a graph dataset { nodes, edges } --------------------- */
-let hubEdgesData = [];
-
 function loadGraph(data) {
   nodes.clear();
   edges.clear();
-  hubEdgesData = data.edges.filter((e) => e.label === "thread");
   nodes.add(data.nodes.map(styleNode));
   edges.add(data.edges.map(styleEdge));
 
@@ -325,11 +322,10 @@ if (arrangeBtn) {
   arrangeBtn.addEventListener("click", () => {
     arranged = !arranged;
     if (arranged) {
-      // Remove hub edges & hide hub nodes so they don't distort the hierarchy
-      const toRemove = edges.get({ filter: (e) => e.label === "thread" });
-      if (toRemove.length) edges.remove(toRemove.map((e) => e.id));
+      // Place hub nodes at level 1 (same as threads) so hub→thread edges
+      // don't push everything an extra level to the right.
       nodes.update(
-        nodes.get({ filter: (n) => n.isHub }).map((n) => ({ id: n.id, hidden: true })),
+        nodes.get({ filter: (n) => n.isHub }).map((n) => ({ id: n.id, level: 1 })),
       );
       network.setOptions({
         layout: {
@@ -345,10 +341,9 @@ if (arrangeBtn) {
         physics: false,
       });
     } else {
-      // Restore hub edges & hub nodes
-      if (hubEdgesData.length) edges.add(hubEdgesData.map(styleEdge));
+      // Remove explicit level from hub nodes (let physics engine place them).
       nodes.update(
-        nodes.get({ filter: (n) => n.isHub }).map((n) => ({ id: n.id, hidden: false })),
+        nodes.get({ filter: (n) => n.isHub }).map((n) => ({ id: n.id, level: undefined })),
       );
       network.setOptions({
         layout: { hierarchical: { enabled: false } },
