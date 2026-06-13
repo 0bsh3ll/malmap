@@ -376,11 +376,14 @@ body {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   background: rgba(13, 17, 23, 0.8);
   backdrop-filter: blur(2px);
+}
+.spinner-overlay.is-visible {
+  display: flex;
 }
 .spinner {
   display: flex;

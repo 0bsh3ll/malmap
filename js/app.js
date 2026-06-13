@@ -222,14 +222,14 @@ if (importBtn && fileInput) {
   fileInput.addEventListener("change", () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) return;
-    spinnerEl.hidden = false;
+    spinnerEl.classList.add("is-visible");
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const { events, errors } = parseProcmonCSV(String(reader.result));
         if (!events.length) {
           setStatus(`${file.name} — no events parsed`, "error");
-          spinnerEl.hidden = true;
+          spinnerEl.classList.remove("is-visible");
           return;
         }
         fullGraph = buildGraphFromEvents(events);
@@ -242,16 +242,16 @@ if (importBtn && fileInput) {
 
         const errNote = errors.length ? `, ${errors.length} skipped` : "";
         setStatus(`${file.name} — ${events.length} events, ${fullGraph.roots.length} trees${errNote}`, "loaded");
-        spinnerEl.hidden = true;
+        spinnerEl.classList.remove("is-visible");
       } catch (err) {
         console.error("Import failed:", err);
         setStatus(`${file.name} — parse failed`, "error");
-        spinnerEl.hidden = true;
+        spinnerEl.classList.remove("is-visible");
       }
     };
     reader.onerror = () => {
       setStatus(`${file.name} — read failed`, "error");
-      spinnerEl.hidden = true;
+      spinnerEl.classList.remove("is-visible");
     };
     reader.readAsText(file);
     fileInput.value = ""; // allow re-importing the same file
