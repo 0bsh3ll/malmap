@@ -1,0 +1,221 @@
+==============================================================================
+ MalMap — IMPLEMENTATION INDEX  (read this first; avoids scanning every file)
+==============================================================================
+Last updated: 2026-06-03
+
+PURPOSE
+  MalMap is a pure static (HTML/CSS/JS, no build step) web app that visualizes
+  Sysinternals Process Monitor (ProcMon) CSV logs as an interactive process /
+  malware-behavior graph, in a Microsoft Defender "Blast Radius" dark-dashboard
+  style. Inspired by ProcDOT. Open index.html directly in a browser (needs
+  internet for two CDN scripts: vis-network + lucide).
+
+WORKFLOW PROTOCOL (from claude.md — IMPORTANT)
+  - Never one-shot. For each task: enter PLAN MODE, outline files/logic, STOP.
+  - Do NOT create/modify files until the user types "APPROVED".
+  - Implement only the approved micro-step.
+
+------------------------------------------------------------------------------
+ FILE STRUCTURE
+------------------------------------------------------------------------------
+  index.html            Dashboard shell + CDN/script tags. Script load ORDER:
+                          1) vis-network (CDN)  2) lucide (CDN)
+                          3) js/mock-data.js  4) js/node-renderer.js
+                          5) js/parser.js     6) js/graph-builder.js
+                          7) js/app.js
+                        (classic scripts share one global scope; top-level
+                         const/function in earlier files are visible in later.)
+  css/styles.css        Theme (CSS vars), grid layout, all component styles.
+  js/mock-data.js       MALMAP_MOCK = initial demo graph (pre-built nodes/edges,
+                          NOT events). Shown before any CSV import.
+  js/node-renderer.js   SVG node-image generator (dark puck + white icon + ring).
+  js/parser.js          ProcMon CSV -> normalized event objects.
+  js/graph-builder.js   events -> graph {nodes,edges} + process-tree metadata.
+  js/app.js             All UI wiring: vis network, filters, legend, lock,
+                          arrange, import, process-tree dropdown, status.
+  samples/sample.csv    Single-root demo (explorer tree, has TID column).
+  samples/multi-tree.csv 3 root trees (explorer=all types, services=proc+reg+
+                          file, chrome=threads+file+network).
+  test/parser-test.html Standalone parser test harness (27 assertions, 8 cases).
+                          Open in browser; expect "27/27 passed".
+  claude.md             Project instructions + roadmap + ProcMon schema.
+  reference.png         Defender incident-graph screenshot (node look reference).
+
+------------------------------------------------------------------------------
+ DATA FLOW
+------------------------------------------------------------------------------
+  CSV text
+    -> parseProcmonCSV(text)        (parser.js)      -> {columns, events, errors}
+    -> buildGraphFromEvents(events) (graph-builder)  -> {nodes,edges,processes,
+                                                          roots,childPids}
+    -> extractProcessTree(full,pid) (graph-builder)  -> {nodes,edges} (subtree)
+    -> loadGraph({nodes,edges})     (app.js)         -> renders via vis.Network
+
+------------------------------------------------------------------------------
+ PARSER  (js/parser.js)   global: window.parseProcmonCSV(text)
+------------------------------------------------------------------------------
+  Returns { columns:string[], events:object[], errors:[{line,message}] }.
+  - tokenizeCSV(): real quoted-CSV tokenizer. Handles fields wrapped in
+    double-quotes, commas/newlines INSIDE quotes, "" escaped quote, unquoted
+    fields, blank-line skipping, trailing field with no final newline.
+  - Strips UTF-8 BOM; normalizes CRLF/CR -> LF.
+  - HEADER_MAP = canonical overrides for app-facing fields only:
+      timeOfDay, processName, pid, operation, path, result, detail, tid.
+  - ANY other column -> toCamelKey(header) auto field name
+      ("Relative Time"->relativeTime, "Session ID"->sessionId,
+       "Image Path"->imagePath, "Event Class"->eventClass). Acronyms are
+       lowercased then capitalized so "ID" -> "Id".
+  - Every column is ALSO preserved verbatim in event.raw[<original header>].
+  - NUMERIC_FIELDS coerced to Number: pid, tid, sequence, sessionId.
+  - Sanity gate: needs >=1 canonical HEADER_MAP column or it errors
+    (so "foo,bar,baz" is rejected).
+  - Rows with wrong column count -> recorded in errors[], parsing continues.
+
+------------------------------------------------------------------------------
+ GRAPH MODEL  (js/graph-builder.js)
+------------------------------------------------------------------------------
+  THREAD-CENTRIC: a node IS a (process, thread). A single-threaded process is
+  ONE node. Extra threads are sibling nodes (same PID, different TID) linked by
+  a "new thread" edge. Actions originate from the acting thread.
+
+  Node object: { id, label, type, severity, pid?, procName? }
+    id forms:   exec  "x:<pid>:<tid>"  (or "x:<pid>:_" when no TID)
+                file  "f:<path>"   registry "r:<path>"   network "n:<path>"
+    type:       "process" (ALL exec nodes; uniform cpu icon),
+                "file" | "registry" | "network"
+                (NOTE: there is no longer a "thread" node type — threads ARE
+                 process-type exec nodes; the Threads filter row won't appear.)
+    label:      exec  "<name>\n(P-<pid>, T-<tid>)"   (or "(P-<pid>)" if no TID)
+                file  basename   registry  last key segment   network  ip:port
+    pid:        present only on exec nodes (used for process-tree filtering)
+    severity:   "low" | "mid" | "high" = MAX severity of touching events
+
+  Edge object: { from, to, label }
+    label = operation name (e.g. "Process Create","RegSetValue","TCP Connect"),
+            or "new thread". Deduped by from|to|label. Arrows from -> to.
+
+  buildGraphFromEvents(events) (2 passes):
+    Pass 1: mainTid map = first TID seen per PID (= the process's main thread).
+    Pass 2: per event, actorId = execNode(pid, tid, name, sev). Then:
+      - Thread Create (Detail "Thread ID: N") -> execNode(pid,N) + "new thread"
+        edge from actor.
+      - Process Create/Start (Detail "PID: N") -> child's main-thread node
+        execNode(N, mainTid[N]) + op-labeled edge; records childPids[pid].add(N).
+      - Reg* -> registry node;  TCP*/UDP* -> network node;  else -> file node;
+        op-labeled edge from actor.
+    Returns also:
+      processes: [{pid,name,severity,threadCount,descendantCount}]
+      roots:     PIDs never a child of another (top-level trees)
+      childPids: Map<parentPid, Set<childPid>>
+
+  classifyOp(op): reg*->registry, tcp/udp*->network, *thread*->thread(handled),
+    process*->process, else file.
+
+  SEVERITY HEURISTIC — scoreSeverity(event)  (single tunable function):
+    HIGH: RegSetValue into \Run/\RunOnce/CurrentVersion\Run;
+          CreateFile/WriteFile/SetRenameInformationFile of *.exe/.dll/.scr/.bat/
+          .cmd/.ps1/.vbs/.js into \Temp\\\AppData\\\ProgramData;
+          "TCP Connect" / "UDP Send".
+    MID:  any Process* op; Reg set/create/delete/rename; file write/create/
+          delete/rename.
+    LOW:  reads/queries/closes/everything else.
+
+  extractProcessTree(full, rootPid) -> {nodes,edges}  (global)
+    rootPid "*" => whole graph. Else BFS childPids from rootPid to get all
+    descendant PIDs; include their exec nodes + connected target nodes + edges
+    between included nodes.
+
+------------------------------------------------------------------------------
+ NODE RENDERER  (js/node-renderer.js)
+------------------------------------------------------------------------------
+  buildNodeImage({type,severity}) -> SVG data-URI used as a vis "image" node.
+    Dark charcoal puck (#2b2f36) + centered WHITE Lucide icon + severity RING.
+    Lucide vectors pulled live from lucide.icons[...] (PascalCase) via
+    lucideInner(); icon nodes are [tag,attrs] tuples.
+  TYPE_ICON: process->cpu, file->file, registry->key-round, network->globe,
+             thread->git-branch (thread unused now but kept).
+  RING (severity -> {color,width}):
+    high #e8590c (orange-red), mid #f0a020 (gold), low #4a525e (muted gray).
+
+------------------------------------------------------------------------------
+ APP / UI WIRING  (js/app.js)
+------------------------------------------------------------------------------
+  styleNode(n):  shape "image" (buildNodeImage), size by SEVERITY_SIZE
+                 (high30/mid26/low22), keeps type+severity for filtering.
+  styleEdge(e):  continuous smooth, arrow to, gray, mid-label.
+  vis options:   barnesHut physics; hierarchical OFF by default.
+  network:       single vis.Network on #graph; on "stabilizationIterationsDone"
+                 -> network.fit().
+
+  loadGraph(data):   clears+adds DataSets, recomputes typesPresent, resets
+                     activeTypes(all on), rebuilds filter rows + legend,
+                     lucide.createIcons(), applyFilters().
+  applyFilters():    sets vis "hidden" on nodes by activeTypes; hides edges that
+                     lose an endpoint; updates bottom Nodes/Edges counts.
+  buildFilterUI():   one toggle row per present type (icon+label+count+check).
+  buildLegend():     type icons + severity ring color meanings.
+  setStatus(text,state): top-bar status; states idle|loaded|error (dot color).
+
+  CONTROLS:
+   - Lock layout toggle (#lockToggle): physics on(live)/off(locked). Locked =
+     drag one node without moving neighbors. layoutLocked flag.
+   - Arrange button (#arrangeBtn): toggles hierarchical LR (sortMethod directed,
+     physics off) <-> force layout (respecting lock). arranged flag.
+   - Import CSV (#importBtn -> hidden #fileInput): FileReader -> parse -> build
+     -> store fullGraph -> populate tree dropdown -> show #treePanel -> render
+     largest root tree. Resets layout to live.
+   - Process Tree dropdown (#treeSelect in #treePanel, hidden until import):
+     options = roots sorted by descendantCount desc + "All processes" ("*").
+     change -> loadGraph(extractProcessTree(fullGraph, value)). Instant, no
+     re-parse. fullGraph holds the full parsed result.
+   - Initial load: loadGraph(MALMAP_MOCK) (mock; tree panel stays hidden).
+
+------------------------------------------------------------------------------
+ UI LAYOUT  (index.html / css)
+------------------------------------------------------------------------------
+  Grid: topbar / [sidebar | canvas] / statusbar.
+  Topbar:   brand "MalMap", Import CSV btn, Arrange btn, status indicator.
+  Sidebar:  Process Tree (hidden until import) | Filters (Lock toggle) |
+            Node Types (generated) | Legend (generated).
+  Canvas:   #graph (vis network).  Statusbar: Nodes / Edges counts + brand.
+  Theme vars: --bg #0d1117, surfaces #131a23/#1a2230, accent #2f81f7,
+              threat high/mid/low #f85149/#d29922/#3fb950.
+
+------------------------------------------------------------------------------
+ PROCMON CSV SCHEMA (reference)
+------------------------------------------------------------------------------
+  Default cols: "Time of Day","Process Name","PID","Operation","Path","Result",
+                "Detail"  (fully double-quoted, comma-separated).
+  Optional (any may appear, user-customizable): TID, Date & Time, Relative Time,
+  Duration, Sequence, Event Class, Category, Image Path, Command Line, Company,
+  Description, Version, Architecture, User Name, Session ID, Authentication ID,
+  Integrity, Virtualized, Completion Time.
+  Parser handles ALL columns generically (see PARSER section).
+  Real operations used: Process Start/Create/Exit, Thread Create/Exit,
+  Load Image, RegSetValue/RegQueryValue/etc, CreateFile/ReadFile/WriteFile,
+  TCP Connect/Send. Process Create Detail has "PID: N"; Thread Create Detail
+  has "Thread ID: N".
+
+------------------------------------------------------------------------------
+ MEMORY (persistent, ~/.claude/.../memory/)
+------------------------------------------------------------------------------
+  sample-data-fidelity.md — sample/mock telemetry MUST mirror real ProcMon
+  columns/operations/Detail formats; don't invent fields ProcMon doesn't emit.
+
+------------------------------------------------------------------------------
+ ROADMAP STATUS (claude.md)  — all core steps done
+------------------------------------------------------------------------------
+  [x] 1 Core layout shell
+  [x] 2 Vis.js + mock graph (Defender-style nodes)
+  [x] 3 Graph controls & filtering (node-type filters, legend; no search yet)
+  [x] 4 Parser engine (+ test harness)
+  [x] 5 Wiring parser to live graph
+  [x] +  Layout lock, edges-follow-when-locked, thread-centric model,
+         (P-pid,T-tid) labels, auto-arrange, process-tree selector.
+  Possible next: search/highlight, node-detail-on-click, time scrubbing,
+  severity tuning, collapse subtrees, pick non-root mid-tree node.
+==============================================================================
+
+
+claude --resume f38a6d3b-8471-4338-8485-343f67bf4419
+

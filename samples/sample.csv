@@ -1,0 +1,8 @@
+"Time of Day","Process Name","PID","TID","Operation","Path","Result","Detail"
+"12:00:01 PM","explorer.exe","1432","1500","Process Start","C:\Users\Target\Downloads\invoice.exe","SUCCESS","PID: 4044"
+"12:00:02 PM","invoice.exe","4044","4045","Thread Create","","SUCCESS","Thread ID: 4048"
+"12:00:03 PM","invoice.exe","4044","4045","Thread Create","","SUCCESS","Thread ID: 4052"
+"12:00:04 PM","invoice.exe","4044","4048","Process Create","C:\Windows\System32\cmd.exe","SUCCESS","PID: 5112"
+"12:00:05 PM","invoice.exe","4044","4048","CreateFile","C:\Windows\Temp\payload.exe","SUCCESS","Desired Access: Generic Write"
+"12:00:06 PM","invoice.exe","4044","4052","TCP Connect","192.168.1.50:443","SUCCESS","Length: 0"
+"12:00:07 PM","cmd.exe","5112","5113","RegSetValue","HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Malware","SUCCESS","Type: REG_SZ, Length: 34, Data: C:\Windows\Temp\payload.exe"

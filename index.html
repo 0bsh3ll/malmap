@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MalMap — Process & Malware Behavior Visualizer</title>
+
+  <!-- Lucide icons (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <!-- Vis.js Network (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand__mark"><i data-lucide="radar"></i></span>
+        <span class="brand__name">Mal<span class="brand__accent">Map</span></span>
+      </div>
+
+      <div class="topbar__actions">
+        <button id="importBtn" class="btn btn--primary" type="button">
+          <i data-lucide="upload"></i>
+          <span>Import CSV</span>
+        </button>
+        <input id="fileInput" type="file" accept=".csv,.txt" hidden />
+        <button id="arrangeBtn" class="btn" type="button" aria-pressed="false" title="Arrange left-to-right">
+          <i data-lucide="list-tree"></i>
+          <span>Arrange</span>
+        </button>
+        <div id="status" class="status status--idle">
+          <span class="status__dot"></span>
+          <span id="statusLabel" class="status__label">No telemetry loaded</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Left sidebar -->
+    <aside class="sidebar">
+      <section class="panel" id="treePanel" hidden>
+        <h2 class="panel__title"><i data-lucide="git-fork"></i> Process Tree</h2>
+        <div class="panel__body">
+          <select id="treeSelect" class="tree-select"></select>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2 class="panel__title"><i data-lucide="filter"></i> Filters</h2>
+        <div class="panel__body">
+          <button id="lockToggle" class="toggle" type="button" role="switch" aria-checked="false">
+            <span class="toggle__icon"><i data-lucide="lock-open"></i></span>
+            <span class="toggle__label">Lock layout</span>
+            <span class="toggle__switch"><span class="toggle__knob"></span></span>
+          </button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2 class="panel__title"><i data-lucide="boxes"></i> Node Types</h2>
+        <div id="nodeTypeFilters" class="panel__body filters"></div>
+      </section>
+
+      <section class="panel">
+        <h2 class="panel__title"><i data-lucide="list"></i> Legend</h2>
+        <div id="legend" class="panel__body legend"></div>
+      </section>
+    </aside>
+
+    <!-- Main canvas pane -->
+    <main class="canvas">
+      <div id="graph" class="graph">
+        <div class="empty-state">
+          <i data-lucide="git-fork" class="empty-state__icon"></i>
+          <p class="empty-state__title">No telemetry loaded</p>
+          <p class="empty-state__hint">Import a ProcMon CSV to visualize process behavior.</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom status bar -->
+    <footer class="statusbar">
+      <span class="statusbar__item"><i data-lucide="circle-dot"></i> Nodes: <strong>0</strong></span>
+      <span class="statusbar__item"><i data-lucide="spline"></i> Edges: <strong>0</strong></span>
+      <span class="statusbar__spacer"></span>
+      <span class="statusbar__item statusbar__brandline">MalMap</span>
+    </footer>
+
+  </div>
+
+  <script src="js/mock-data.js"></script>
+  <script src="js/node-renderer.js"></script>
+  <script src="js/parser.js"></script>
+  <script src="js/graph-builder.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

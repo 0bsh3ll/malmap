@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MalMap — Parser Tests</title>
+  <style>
+    body { background:#0d1117; color:#e6edf3; font:14px "Segoe UI",system-ui,sans-serif; padding:24px; }
+    h1 { font-size:18px; }
+    .summary { margin:12px 0 18px; font-size:15px; }
+    table { border-collapse:collapse; width:100%; max-width:900px; }
+    th,td { text-align:left; padding:7px 10px; border-bottom:1px solid #232c3a; vertical-align:top; }
+    th { color:#8b98a8; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+    .pass { color:#3fb950; font-weight:600; }
+    .fail { color:#f85149; font-weight:600; }
+    .detail { color:#8b98a8; font-size:12.5px; }
+    code { color:#d29922; }
+  </style>
+</head>
+<body>
+  <h1>MalMap — ProcMon CSV Parser Tests</h1>
+  <div class="summary" id="summary">Running…</div>
+  <table>
+    <thead><tr><th>Result</th><th>Test</th><th>Detail</th></tr></thead>
+    <tbody id="results"></tbody>
+  </table>
+
+  <script src="../js/parser.js"></script>
+  <script>
+    const results = [];
+    function check(name, cond, detail = "") {
+      results.push({ name, pass: !!cond, detail });
+    }
+    const eqArr = (a, b) => Array.isArray(a) && Array.isArray(b) &&
+      a.length === b.length && a.every((v, i) => v === b[i]);
+
+    /* ---- Case 1: CLAUDE.md default 5-row sample ---- */
+    const SAMPLE = [
+      '"Time of Day","Process Name","PID","Operation","Path","Result","Detail"',
+      '"12:00:01 PM","explorer.exe","1432","Process Start","C:\\Users\\Target\\Downloads\\invoice.exe","SUCCESS","PID: 4044"',
+      '"12:00:02 PM","invoice.exe","4044","Process Create","C:\\Windows\\System32\\cmd.exe","SUCCESS","PID: 5112"',
+      '"12:00:03 PM","cmd.exe","5112","RegSetValue","HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Malware","SUCCESS","Type: REG_SZ, Length: 34, Data: C:\\Windows\\Temp\\payload.exe"',
+      '"12:00:04 PM","invoice.exe","4044","CreateFile","C:\\Windows\\Temp\\payload.exe","SUCCESS","Desired Access: Generic Write"',
+      '"12:00:05 PM","invoice.exe","4044","TCP Connect","192.168.1.50:443","SUCCESS","Length: 0"',
+    ].join("\n");
+
+    const r1 = parseProcmonCSV(SAMPLE);
+    check("Default sample parses 5 events", r1.events.length === 5, `got ${r1.events.length}`);
+    check("No errors on clean sample", r1.errors.length === 0, JSON.stringify(r1.errors));
+    check("Columns detected in order",
+      eqArr(r1.columns, ["Time of Day","Process Name","PID","Operation","Path","Result","Detail"]),
+      r1.columns.join(" | "));
+    check("Row 1 fields normalized",
+      r1.events[0].processName === "explorer.exe" &&
+      r1.events[0].operation === "Process Start" &&
+      r1.events[0].result === "SUCCESS",
+      `${r1.events[0].processName} / ${r1.events[0].operation}`);
+    check("PID coerced to Number",
+      r1.events[0].pid === 1432 && typeof r1.events[0].pid === "number",
+      `${r1.events[0].pid} (${typeof r1.events[0].pid})`);
+
+    /* ---- Case 2: commas inside quoted Detail stay intact ---- */
+    check("Detail with embedded commas preserved",
+      r1.events[2].detail === "Type: REG_SZ, Length: 34, Data: C:\\Windows\\Temp\\payload.exe",
+      r1.events[2].detail);
+    check("Registry Path preserved",
+      r1.events[2].path === "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Malware",
+      r1.events[2].path);
+    check("Network Path with port preserved",
+      r1.events[4].path === "192.168.1.50:443", r1.events[4].path);
+
+    /* ---- Case 3: UTF-8 BOM + CRLF line endings ---- */
+    const bomCRLF = "﻿" +
+      '"Time of Day","Process Name","PID","Operation","Path","Result","Detail"\r\n' +
+      '"12:00:01 PM","explorer.exe","1432","Process Start","C:\\x.exe","SUCCESS","PID: 4044"\r\n';
+    const r3 = parseProcmonCSV(bomCRLF);
+    check("BOM stripped from first header", r3.columns[0] === "Time of Day", JSON.stringify(r3.columns[0]));
+    check("CRLF sample parses 1 event", r3.events.length === 1, `got ${r3.events.length}`);
+
+    /* ---- Case 4: reordered + extra columns mapped by name ---- */
+    const reordered =
+      '"TID","Process Name","PID","Operation","Path","Result","Detail","Time of Day"\n' +
+      '"100","explorer.exe","1432","Process Start","C:\\x.exe","SUCCESS","PID: 4044","12:00:01 PM"\n';
+    const r4 = parseProcmonCSV(reordered);
+    check("Reordered: timeOfDay from last column",
+      r4.events[0].timeOfDay === "12:00:01 PM", r4.events[0].timeOfDay);
+    check("Reordered: TID coerced to Number",
+      r4.events[0].tid === 100 && typeof r4.events[0].tid === "number",
+      `${r4.events[0].tid}`);
+    check("Reordered: PID still correct", r4.events[0].pid === 1432, `${r4.events[0].pid}`);
+
+    /* ---- Case 5: blank lines skipped ---- */
+    const withBlanks =
+      '"Time of Day","Process Name","PID","Operation","Path","Result","Detail"\n' +
+      '\n' +
+      '"12:00:01 PM","explorer.exe","1432","Process Start","C:\\x.exe","SUCCESS","PID: 4044"\n' +
+      '\n' +
+      '"12:00:02 PM","invoice.exe","4044","Process Create","C:\\cmd.exe","SUCCESS","PID: 5112"\n';
+    const r5 = parseProcmonCSV(withBlanks);
+    check("Blank lines skipped (2 events)", r5.events.length === 2, `got ${r5.events.length}`);
+    check("Blank lines produce no errors", r5.errors.length === 0, JSON.stringify(r5.errors));
+
+    /* ---- Case 6: malformed row recorded, valid rows still parse ---- */
+    const malformed =
+      '"Time of Day","Process Name","PID","Operation","Path","Result","Detail"\n' +
+      '"12:00:01 PM","explorer.exe","1432","Process Start","C:\\x.exe","SUCCESS","PID: 4044"\n' +
+      '"only","three","cols"\n' +
+      '"12:00:02 PM","invoice.exe","4044","Process Create","C:\\cmd.exe","SUCCESS","PID: 5112"\n';
+    const r6 = parseProcmonCSV(malformed);
+    check("Malformed row recorded in errors", r6.errors.length === 1, JSON.stringify(r6.errors));
+    check("Valid rows still parsed around malformed", r6.events.length === 2, `got ${r6.events.length}`);
+
+    /* ---- Case 7: unrecognized header rejected ---- */
+    const r7 = parseProcmonCSV("foo,bar,baz\n1,2,3\n");
+    check("Unrecognized header reports error", r7.errors.length > 0 && r7.events.length === 0,
+      JSON.stringify(r7.errors));
+
+    /* ---- Case 8: non-default columns captured generically ---- */
+    const fullCols =
+      '"Date & Time","Time of Day","Process Name","PID","TID","Sequence",' +
+      '"Operation","Path","Result","Detail","Relative Time","Duration",' +
+      '"Image Path","Command Line","User Name","Session ID","Integrity","Virtualized","Event Class","Category"\n' +
+      '"6/2/2026 12:00:01.123 PM","12:00:01 PM","invoice.exe","4044","2200","17",' +
+      '"CreateFile","C:\\Windows\\Temp\\payload.exe","SUCCESS","Desired Access: Generic Write","0.0001234","0.0000456",' +
+      '"C:\\Users\\Target\\Downloads\\invoice.exe","invoice.exe /q","TARGET\\\\user","2","Medium","False","File System","Write File"\n';
+    const r8 = parseProcmonCSV(fullCols);
+    const e8 = r8.events[0] || {};
+    check("Full-column row parses 1 event", r8.events.length === 1, `got ${r8.events.length}`);
+    check("Canonical fields still mapped",
+      e8.processName === "invoice.exe" && e8.operation === "CreateFile" && e8.pid === 4044,
+      `${e8.processName}/${e8.operation}/${e8.pid}`);
+    check("Auto-derived: 'Relative Time' -> relativeTime",
+      e8.relativeTime === "0.0001234", e8.relativeTime);
+    check("Auto-derived: 'Image Path' -> imagePath",
+      e8.imagePath === "C:\\Users\\Target\\Downloads\\invoice.exe", e8.imagePath);
+    check("Auto-derived: 'Command Line' -> commandLine",
+      e8.commandLine === "invoice.exe /q", e8.commandLine);
+    check("Auto-derived: 'Event Class' -> eventClass",
+      e8.eventClass === "File System", e8.eventClass);
+    check("Auto-derived: 'Integrity' / 'Virtualized' captured",
+      e8.integrity === "Medium" && e8.virtualized === "False",
+      `${e8.integrity}/${e8.virtualized}`);
+    check("Sequence + Session ID coerced to Number",
+      e8.sequence === 17 && typeof e8.sequence === "number" &&
+      e8.sessionId === 2 && typeof e8.sessionId === "number",
+      `seq=${e8.sequence} sess=${e8.sessionId}`);
+    check("Every column preserved verbatim in raw",
+      Object.keys(e8.raw || {}).length === 20 &&
+      e8.raw["Command Line"] === "invoice.exe /q",
+      `${Object.keys(e8.raw || {}).length} raw keys`);
+
+    /* ---- Render ---- */
+    const tbody = document.getElementById("results");
+    let passed = 0;
+    for (const r of results) {
+      if (r.pass) passed++;
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td class="${r.pass ? "pass" : "fail"}">${r.pass ? "PASS" : "FAIL"}</td>` +
+        `<td>${r.name}</td>` +
+        `<td class="detail"><code>${String(r.detail).replace(/</g,"&lt;")}</code></td>`;
+      tbody.appendChild(tr);
+    }
+    const all = passed === results.length;
+    const summary = document.getElementById("summary");
+    summary.innerHTML = `<span class="${all ? "pass" : "fail"}">${passed}/${results.length} passed</span>`;
+    console[all ? "log" : "error"](`Parser tests: ${passed}/${results.length} passed`);
+  </script>
+</body>
+</html>
