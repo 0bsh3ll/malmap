@@ -60,20 +60,6 @@ function lucideInner(iconName, scale, tx, ty) {
  * @param {{type:string, severity:string}} n
  */
 function buildNodeImage(n) {
-  if (n.isHub) {
-    const c = BOX / 2;
-    const r = c - 14;
-    const iconPx = 34;
-    const scale = iconPx / 24;
-    const offset = c - iconPx / 2;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${BOX}" height="${BOX}" viewBox="0 0 ${BOX} ${BOX}">
-      <circle cx="${c}" cy="${c}" r="${r}" fill="${PUCK_FILL}"
-              stroke="#4a525e" stroke-width="2" stroke-dasharray="4 3" />
-      ${lucideInner("cpu", scale, offset, offset)}
-    </svg>`;
-    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
-  }
-
   const ring = RING[n.severity] || RING.low;
   const iconName = TYPE_ICON[n.type] || "circle";
 

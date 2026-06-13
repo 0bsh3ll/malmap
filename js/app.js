@@ -18,28 +18,26 @@ function styleNode(n) {
     severity: n.severity,
     shape: "image",
     image: buildNodeImage(n),
-    size: n.isHub ? 18 : (SEVERITY_SIZE[n.severity] || 22),
+    size: SEVERITY_SIZE[n.severity] || 22,
     font: {
       color: "#e6edf3",
-      size: n.isHub ? 11 : 13,
+      size: 13,
       face: "Segoe UI",
-      vadjust: n.isHub ? 0 : 4,
+      vadjust: 4,
     },
   };
 }
 
 function styleEdge(e) {
-  const isHub = e.label === "thread";
   return {
     from: e.from,
     to: e.to,
     label: e.label,
-    arrows: isHub ? { to: { enabled: false } } : { to: { enabled: true, scaleFactor: 0.6 } },
-    dashes: isHub,
-    color: isHub ? { color: "#4a525e" } : { color: "#4a525e", highlight: "#8b98a8", hover: "#8b98a8" },
+    arrows: { to: { enabled: true, scaleFactor: 0.6 } },
+    color: { color: "#4a525e", highlight: "#8b98a8", hover: "#8b98a8" },
     font: { color: "#8b98a8", size: 11, strokeWidth: 4, strokeColor: "#0d1117", align: "middle" },
     smooth: { enabled: true, type: "continuous", roundness: 0.5 },
-    width: isHub ? 1 : 1.5,
+    width: 1.5,
   };
 }
 
@@ -314,12 +312,10 @@ const arrangeBtn = document.getElementById("arrangeBtn");
 
 function layoutVisibleNodes() {
   const visible = nodes.get({ filter: (n) => !n.hidden });
-  const hubNodes = visible.filter((n) => n.isHub);
-  const treeNodes = visible.filter((n) => !n.isHub);
   const visIds = new Set(visible.map((n) => n.id));
 
   const visibleEdges = edges.get().filter(
-    (e) => visIds.has(e.from) && visIds.has(e.to) && e.label !== "thread",
+    (e) => visIds.has(e.from) && visIds.has(e.to),
   );
 
   const children = {};
@@ -329,23 +325,15 @@ function layoutVisibleNodes() {
     hasParent.add(e.to);
   }
 
-  const queue = treeNodes.filter((n) => !hasParent.has(n.id)).map((n) => ({ id: n.id, depth: 0 }));
+  const queue = visible.filter((n) => !hasParent.has(n.id)).map((n) => ({ id: n.id, depth: 0 }));
   const level = {};
   for (const item of queue) {
     if (level[item.id] !== undefined) continue;
     level[item.id] = item.depth;
     for (const child of (children[item.id] || [])) queue.push({ id: child, depth: item.depth + 1 });
   }
-  for (const n of treeNodes) if (level[n.id] === undefined) level[n.id] = 0;
+  for (const n of visible) if (level[n.id] === undefined) level[n.id] = 0;
 
-  // Place hub nodes at the same position as a sibling with the same PID.
-  const pidLevel = {};
-  for (const n of treeNodes) {
-    if (n.pid != null && level[n.id] !== undefined) pidLevel[n.pid] = level[n.id];
-  }
-  for (const n of hubNodes) level[n.id] = n.pid != null && pidLevel[n.pid] !== undefined ? pidLevel[n.pid] : 0;
-
-  // Group by level and sort for vertical placement.
   const byLevel = {};
   for (const n of visible) {
     const lvl = level[n.id] ?? 0;

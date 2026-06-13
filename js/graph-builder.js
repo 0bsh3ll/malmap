@@ -95,6 +95,13 @@ function buildGraphFromEvents(events) {
     if (!mainTid.has(ev.pid)) mainTid.set(ev.pid, ev.tid);
   }
 
+  // Collect all PIDs that actually appear in the log (don't create stub nodes
+  // for parent/child PIDs that never show up in any event).
+  const knownPids = new Set();
+  for (const ev of events || []) {
+    if (ev.pid != null && ev.pid !== "") knownPids.add(Number(ev.pid));
+  }
+
   // Pass 2: build nodes/edges. Actions originate from the acting (pid, tid).
   for (const ev of events || []) {
     if (ev.pid == null || ev.pid === "" || !ev.processName) continue;
@@ -127,13 +134,15 @@ function buildGraphFromEvents(events) {
           const parentPid = Number(pm[1]);
           const childPid = ev.pid;
           const childTid = mainTid.has(childPid) ? mainTid.get(childPid) : null;
-          const parentTid = mainTid.has(parentPid) ? mainTid.get(parentPid) : null;
           const childName = ev.processName || "process";
-          const parentId = execNode(parentPid, parentTid, "process", "low");
           const childId = execNode(childPid, childTid, childName, sev);
-          addEdge(parentId, childId, op);
-          if (!childPids.has(parentPid)) childPids.set(parentPid, new Set());
-          childPids.get(parentPid).add(childPid);
+          if (knownPids.has(parentPid)) {
+            const parentTid = mainTid.has(parentPid) ? mainTid.get(parentPid) : null;
+            const parentId = execNode(parentPid, parentTid, "process", "low");
+            addEdge(parentId, childId, op);
+            if (!childPids.has(parentPid)) childPids.set(parentPid, new Set());
+            childPids.get(parentPid).add(childPid);
+          }
         }
         continue;
       }
@@ -141,11 +150,13 @@ function buildGraphFromEvents(events) {
       const m = /PID:\s*(\d+)/i.exec(ev.detail || "");
       if (m) {
         const childPid = Number(m[1]);
-        const childTid = mainTid.has(childPid) ? mainTid.get(childPid) : null;
-        const childId = execNode(childPid, childTid, baseName(path) || "process", sev);
-        addEdge(actorId, childId, op);
-        if (!childPids.has(ev.pid)) childPids.set(ev.pid, new Set());
-        childPids.get(ev.pid).add(childPid);
+        if (knownPids.has(childPid)) {
+          const childTid = mainTid.has(childPid) ? mainTid.get(childPid) : null;
+          const childId = execNode(childPid, childTid, baseName(path) || "process", sev);
+          addEdge(actorId, childId, op);
+          if (!childPids.has(ev.pid)) childPids.set(ev.pid, new Set());
+          childPids.get(ev.pid).add(childPid);
+        }
       } else if (path) {
         const fid = `f:${path}`;
         ensureNode(fid, baseName(path), "file", sev);
@@ -163,29 +174,6 @@ function buildGraphFromEvents(events) {
 
     ensureNode(targetId, label, type, sev);
     addEdge(actorId, targetId, op);
-  }
-
-  // ---- Thread hub nodes ----
-  // For PIDs with 2+ thread nodes, add a hub node and connect each thread to it.
-  const pidThreads = new Map();
-  for (const n of nodeMap.values()) {
-    if (n.pid != null && n.type === "process") {
-      if (!pidThreads.has(n.pid)) pidThreads.set(n.pid, []);
-      pidThreads.get(n.pid).push(n);
-    }
-  }
-  for (const [pid, threads] of pidThreads) {
-    if (threads.length < 2) continue;
-    const hubId = `x:${pid}:_`;
-    const hubName = threads[0].procName || "process";
-    ensureNode(hubId, `${hubName}\n(P-${pid})`, "process", "low");
-    const hub = nodeMap.get(hubId);
-    hub.pid = pid;
-    hub.isHub = true;
-    hub.procName = hubName;
-    for (const t of threads) {
-      addEdge(hubId, t.id, "thread");
-    }
   }
 
   // ---- Process hierarchy metadata ----
