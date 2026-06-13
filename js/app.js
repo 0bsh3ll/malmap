@@ -311,14 +311,38 @@ if (modalLoadBtn) {
 let arranged = false;
 const arrangeBtn = document.getElementById("arrangeBtn");
 
+// Compute tree levels using only visible nodes, ignoring hidden ones.
+function computeVisibleLevels() {
+  const visible = nodes.get({ filter: (n) => !n.hidden });
+  const visIds = new Set(visible.map((n) => n.id));
+  const visibleEdges = edges.get().filter((e) => visIds.has(e.from) && visIds.has(e.to) && e.label !== "thread");
+
+  const children = {};
+  const hasParent = new Set();
+  for (const e of visibleEdges) {
+    (children[e.from] ??= []).push(e.to);
+    hasParent.add(e.to);
+  }
+
+  const roots = visible.filter((n) => !hasParent.has(n.id) && !n.isHub).map((n) => n.id);
+  const level = {};
+  const queue = roots.map((id) => ({ id, depth: 0 }));
+  for (const item of queue) {
+    if (level[item.id] !== undefined) continue;
+    level[item.id] = item.depth;
+    for (const child of (children[item.id] || [])) queue.push({ id: child, depth: item.depth + 1 });
+  }
+  for (const n of visible) if (level[n.id] === undefined) level[n.id] = 0;
+  return level;
+}
+
 if (arrangeBtn) {
   arrangeBtn.addEventListener("click", () => {
     arranged = !arranged;
     if (arranged) {
-      // Place hub nodes at level 1 (same as threads) so hub→thread edges
-      // don't push everything an extra level to the right.
+      const levels = computeVisibleLevels();
       nodes.update(
-        nodes.get({ filter: (n) => n.isHub }).map((n) => ({ id: n.id, level: 1 })),
+        nodes.get().map((n) => ({ id: n.id, level: n.isHub ? 1 : (levels[n.id] ?? 0) })),
       );
       network.setOptions({
         layout: {
@@ -334,10 +358,7 @@ if (arrangeBtn) {
         physics: { enabled: false },
       });
     } else {
-      // Remove explicit level from hub nodes (let physics engine place them).
-      nodes.update(
-        nodes.get({ filter: (n) => n.isHub }).map((n) => ({ id: n.id, level: undefined })),
-      );
+      nodes.update(nodes.get().map((n) => ({ id: n.id, level: undefined })));
       network.setOptions({
         layout: { hierarchical: { enabled: false } },
         physics: { enabled: layoutLocked },
