@@ -52,12 +52,7 @@ const options = {
   nodes: { borderWidthSelected: 4 },
   edges: { selectionWidth: 1.5 },
   interaction: { hover: true, dragNodes: true, zoomView: true, dragView: true, tooltipDelay: 120 },
-  physics: {
-    enabled: true,
-    solver: "barnesHut",
-    barnesHut: { gravitationalConstant: -8000, springLength: 140, springConstant: 0.04, damping: 0.4 },
-    stabilization: { iterations: 200 },
-  },
+  physics: { enabled: false },
   manipulation: { enabled: false },
   layout: { improvedLayout: true },
 };
@@ -67,8 +62,6 @@ const emptyState = graphEl.querySelector(".empty-state");
 if (emptyState) emptyState.remove();
 
 const network = new vis.Network(graphEl, { nodes, edges }, options);
-// Recenter once the force layout settles after each (re)load.
-network.on("stabilizationIterationsDone", () => network.fit({ animation: true }));
 
 /* ---- Node-type metadata (icons come from node-renderer.js TYPE_ICON) ---- */
 const TYPE_ORDER = ["process", "file", "registry", "network", "thread"];
@@ -175,13 +168,13 @@ function renderLockState() {
 if (lockToggle) {
   lockToggle.addEventListener("click", () => {
     layoutLocked = !layoutLocked;
-    network.setOptions({ physics: { enabled: !layoutLocked } });
+    network.setOptions({ physics: { enabled: layoutLocked } });
     renderLockState();
   });
 }
 
 function setLayoutLive() {
-  layoutLocked = false;
+  layoutLocked = true;
   network.setOptions({ physics: { enabled: true } });
   renderLockState();
 }
@@ -338,7 +331,7 @@ if (arrangeBtn) {
             nodeSpacing: 80,
           },
         },
-        physics: false,
+        physics: { enabled: false },
       });
     } else {
       // Remove explicit level from hub nodes (let physics engine place them).
@@ -347,7 +340,7 @@ if (arrangeBtn) {
       );
       network.setOptions({
         layout: { hierarchical: { enabled: false } },
-        physics: { enabled: !layoutLocked },
+        physics: { enabled: layoutLocked },
       });
     }
     network.fit({ animation: true });
