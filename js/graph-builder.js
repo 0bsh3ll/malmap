@@ -118,8 +118,26 @@ function buildGraphFromEvents(events) {
       continue;
     }
 
-    // Process Create / Start -> child's main-thread node (PID from Detail).
+    // Process Create / Start -> establish parent-child edges.
     if (lop.startsWith("process")) {
+      if (lop === "process start") {
+        // Process Start: event PID is the child, detail has "Parent PID: <parent>"
+        const pm = /Parent PID:\s*(\d+)/i.exec(ev.detail || "");
+        if (pm) {
+          const parentPid = Number(pm[1]);
+          const childPid = ev.pid;
+          const childTid = mainTid.has(childPid) ? mainTid.get(childPid) : null;
+          const parentTid = mainTid.has(parentPid) ? mainTid.get(parentPid) : null;
+          const childName = ev.processName || "process";
+          const parentId = execNode(parentPid, parentTid, "process", "low");
+          const childId = execNode(childPid, childTid, childName, sev);
+          addEdge(parentId, childId, op);
+          if (!childPids.has(parentPid)) childPids.set(parentPid, new Set());
+          childPids.get(parentPid).add(childPid);
+        }
+        continue;
+      }
+      // Process Create: event PID is the parent, detail has "PID: <child>"
       const m = /PID:\s*(\d+)/i.exec(ev.detail || "");
       if (m) {
         const childPid = Number(m[1]);
