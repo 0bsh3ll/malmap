@@ -305,17 +305,22 @@ if (modalLoadBtn) {
   });
 }
 
-/* ---- Auto-arrange (hierarchical left-to-right) -------------------------- */
-// On: roots (e.g. explorer.exe) on the left, descendant/newer processes to the
-// right. Off: restore the free force layout, respecting the Lock toggle.
+/* ---- Auto-arrange (deterministic left-to-right tree) -------------------- */
+// On: positions nodes as a tree using absolute x/y coordinates based on
+// visible nodes only — hidden/filtered nodes are ignored. Each toggle
+// produces the same layout (deterministic).
 let arranged = false;
 const arrangeBtn = document.getElementById("arrangeBtn");
 
-// Compute tree levels using only visible nodes, ignoring hidden ones.
-function computeVisibleLevels() {
+function layoutVisibleNodes() {
   const visible = nodes.get({ filter: (n) => !n.hidden });
+  const hubNodes = visible.filter((n) => n.isHub);
+  const treeNodes = visible.filter((n) => !n.isHub);
   const visIds = new Set(visible.map((n) => n.id));
-  const visibleEdges = edges.get().filter((e) => visIds.has(e.from) && visIds.has(e.to) && e.label !== "thread");
+
+  const visibleEdges = edges.get().filter(
+    (e) => visIds.has(e.from) && visIds.has(e.to) && e.label !== "thread",
+  );
 
   const children = {};
   const hasParent = new Set();
@@ -324,45 +329,51 @@ function computeVisibleLevels() {
     hasParent.add(e.to);
   }
 
-  const roots = visible.filter((n) => !hasParent.has(n.id) && !n.isHub).map((n) => n.id);
+  const queue = treeNodes.filter((n) => !hasParent.has(n.id)).map((n) => ({ id: n.id, depth: 0 }));
   const level = {};
-  const queue = roots.map((id) => ({ id, depth: 0 }));
   for (const item of queue) {
     if (level[item.id] !== undefined) continue;
     level[item.id] = item.depth;
     for (const child of (children[item.id] || [])) queue.push({ id: child, depth: item.depth + 1 });
   }
-  for (const n of visible) if (level[n.id] === undefined) level[n.id] = 0;
-  return level;
+  for (const n of treeNodes) if (level[n.id] === undefined) level[n.id] = 0;
+
+  // Place hub nodes at the same position as a sibling with the same PID.
+  const pidLevel = {};
+  for (const n of treeNodes) {
+    if (n.pid != null && level[n.id] !== undefined) pidLevel[n.pid] = level[n.id];
+  }
+  for (const n of hubNodes) level[n.id] = n.pid != null && pidLevel[n.pid] !== undefined ? pidLevel[n.pid] : 0;
+
+  // Group by level and sort for vertical placement.
+  const byLevel = {};
+  for (const n of visible) {
+    const lvl = level[n.id] ?? 0;
+    (byLevel[lvl] ??= []).push(n);
+  }
+  for (const lvl in byLevel) byLevel[lvl].sort((a, b) => a.label.localeCompare(b.label));
+
+  const H_SPACE = 150;
+  const V_SPACE = 100;
+
+  nodes.update(
+    visible.map((n) => {
+      const lvl = level[n.id] ?? 0;
+      const idx = byLevel[lvl].findIndex((m) => m.id === n.id);
+      return { id: n.id, x: lvl * H_SPACE, y: idx * V_SPACE };
+    }),
+  );
 }
 
 if (arrangeBtn) {
   arrangeBtn.addEventListener("click", () => {
     arranged = !arranged;
     if (arranged) {
-      const levels = computeVisibleLevels();
-      nodes.update(
-        nodes.get().map((n) => ({ id: n.id, level: n.isHub ? 1 : (levels[n.id] ?? 0) })),
-      );
-      network.setOptions({
-        layout: {
-          hierarchical: {
-            enabled: true,
-            direction: "LR",
-            sortMethod: "directed",
-            shakeTowards: "roots",
-            levelSeparation: 80,
-            nodeSpacing: 80,
-          },
-        },
-        physics: { enabled: false },
-      });
+      layoutVisibleNodes();
+      network.setOptions({ physics: { enabled: false } });
     } else {
-      nodes.update(nodes.get().map((n) => ({ id: n.id, level: undefined })));
-      network.setOptions({
-        layout: { hierarchical: { enabled: false } },
-        physics: { enabled: layoutLocked },
-      });
+      nodes.update(nodes.get().map((n) => ({ id: n.id, x: undefined, y: undefined })));
+      network.setOptions({ physics: { enabled: layoutLocked } });
     }
     network.fit({ animation: true });
     arrangeBtn.classList.toggle("is-active", arranged);
