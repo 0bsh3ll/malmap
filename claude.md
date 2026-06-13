@@ -8,6 +8,7 @@ You are building "MalMap"—a web-based (HTML, CSS, JS) interactive process and 
 3. At the end of your plan, stop and wait for explicit approval.
 4. Do NOT modify or create files until the user types "APPROVED".
 5. Implement ONLY the agreed-upon micro-step.
+6. Always ask before committing or pushing to git — never do either without explicit approval.
 
 ## UI/UX Blueprint (Microsoft Defender Blast Radius)
 - Theme: Deep slate/charcoal dashboard background (`#0d1117`).

@@ -210,6 +210,9 @@ if (treeSelect) {
   });
 }
 
+/* ---- Spinner ------------------------------------------------------------ */
+const spinnerEl = document.getElementById("spinner");
+
 /* ---- Import CSV --------------------------------------------------------- */
 const importBtn = document.getElementById("importBtn");
 const fileInput = document.getElementById("fileInput");
@@ -219,12 +222,14 @@ if (importBtn && fileInput) {
   fileInput.addEventListener("change", () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) return;
+    spinnerEl.hidden = false;
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const { events, errors } = parseProcmonCSV(String(reader.result));
         if (!events.length) {
           setStatus(`${file.name} — no events parsed`, "error");
+          spinnerEl.hidden = true;
           return;
         }
         fullGraph = buildGraphFromEvents(events);
@@ -237,12 +242,17 @@ if (importBtn && fileInput) {
 
         const errNote = errors.length ? `, ${errors.length} skipped` : "";
         setStatus(`${file.name} — ${events.length} events, ${fullGraph.roots.length} trees${errNote}`, "loaded");
+        spinnerEl.hidden = true;
       } catch (err) {
         console.error("Import failed:", err);
         setStatus(`${file.name} — parse failed`, "error");
+        spinnerEl.hidden = true;
       }
     };
-    reader.onerror = () => setStatus(`${file.name} — read failed`, "error");
+    reader.onerror = () => {
+      setStatus(`${file.name} — read failed`, "error");
+      spinnerEl.hidden = true;
+    };
     reader.readAsText(file);
     fileInput.value = ""; // allow re-importing the same file
   });
