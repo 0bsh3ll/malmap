@@ -137,9 +137,12 @@ function buildLegend() {
 }
 
 /* ---- Load / reload a graph dataset { nodes, edges } --------------------- */
+let hubEdgesData = [];
+
 function loadGraph(data) {
   nodes.clear();
   edges.clear();
+  hubEdgesData = data.edges.filter((e) => e.label === "thread");
   nodes.add(data.nodes.map(styleNode));
   edges.add(data.edges.map(styleEdge));
 
@@ -322,6 +325,12 @@ if (arrangeBtn) {
   arrangeBtn.addEventListener("click", () => {
     arranged = !arranged;
     if (arranged) {
+      // Remove hub edges & hide hub nodes so they don't distort the hierarchy
+      const toRemove = edges.get({ filter: (e) => e.label === "thread" });
+      if (toRemove.length) edges.remove(toRemove.map((e) => e.id));
+      nodes.update(
+        nodes.get({ filter: (n) => n.isHub }).map((n) => ({ id: n.id, hidden: true })),
+      );
       network.setOptions({
         layout: {
           hierarchical: {
@@ -336,6 +345,11 @@ if (arrangeBtn) {
         physics: false,
       });
     } else {
+      // Restore hub edges & hub nodes
+      if (hubEdgesData.length) edges.add(hubEdgesData.map(styleEdge));
+      nodes.update(
+        nodes.get({ filter: (n) => n.isHub }).map((n) => ({ id: n.id, hidden: false })),
+      );
       network.setOptions({
         layout: { hierarchical: { enabled: false } },
         physics: { enabled: !layoutLocked },
