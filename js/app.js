@@ -353,8 +353,8 @@ function layoutVisibleNodes() {
   }
   for (const lvl in byLevel) byLevel[lvl].sort((a, b) => a.label.localeCompare(b.label));
 
-  const H_SPACE = 150;
-  const V_SPACE = 100;
+  const H_SPACE = 250;
+  const V_SPACE = 120;
 
   nodes.update(
     visible.map((n) => {
