@@ -165,6 +165,29 @@ function buildGraphFromEvents(events) {
     addEdge(actorId, targetId, op);
   }
 
+  // ---- Thread hub nodes ----
+  // For PIDs with 2+ thread nodes, add a hub node and connect each thread to it.
+  const pidThreads = new Map();
+  for (const n of nodeMap.values()) {
+    if (n.pid != null && n.type === "process") {
+      if (!pidThreads.has(n.pid)) pidThreads.set(n.pid, []);
+      pidThreads.get(n.pid).push(n);
+    }
+  }
+  for (const [pid, threads] of pidThreads) {
+    if (threads.length < 2) continue;
+    const hubId = `x:${pid}:_`;
+    const hubName = threads[0].procName || "process";
+    ensureNode(hubId, `${hubName}\n(P-${pid})`, "process", "low");
+    const hub = nodeMap.get(hubId);
+    hub.pid = pid;
+    hub.isHub = true;
+    hub.procName = hubName;
+    for (const t of threads) {
+      addEdge(hubId, t.id, "thread");
+    }
+  }
+
   // ---- Process hierarchy metadata ----
   // One entry per distinct PID (threads of a PID are grouped).
   const procMap = new Map(); // pid -> { pid, name, severity, threadCount }

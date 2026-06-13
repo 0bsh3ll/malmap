@@ -14,25 +14,32 @@ function styleNode(n) {
   return {
     id: n.id,
     label: n.label,
-    type: n.type,         // retained for filtering
-    severity: n.severity, // retained for filtering / legend
+    type: n.type,
+    severity: n.severity,
     shape: "image",
     image: buildNodeImage(n),
-    size: SEVERITY_SIZE[n.severity] || 22,
-    font: { color: "#e6edf3", size: 13, face: "Segoe UI", vadjust: 4 },
+    size: n.isHub ? 18 : (SEVERITY_SIZE[n.severity] || 22),
+    font: {
+      color: "#e6edf3",
+      size: n.isHub ? 11 : 13,
+      face: "Segoe UI",
+      vadjust: n.isHub ? 0 : 4,
+    },
   };
 }
 
 function styleEdge(e) {
+  const isHub = e.label === "thread";
   return {
     from: e.from,
     to: e.to,
     label: e.label,
-    arrows: { to: { enabled: true, scaleFactor: 0.6 } },
-    color: { color: "#4a525e", highlight: "#8b98a8", hover: "#8b98a8" },
+    arrows: isHub ? { to: { enabled: false } } : { to: { enabled: true, scaleFactor: 0.6 } },
+    dashes: isHub,
+    color: isHub ? { color: "#4a525e" } : { color: "#4a525e", highlight: "#8b98a8", hover: "#8b98a8" },
     font: { color: "#8b98a8", size: 11, strokeWidth: 4, strokeColor: "#0d1117", align: "middle" },
     smooth: { enabled: true, type: "continuous", roundness: 0.5 },
-    width: 1.5,
+    width: isHub ? 1 : 1.5,
   };
 }
 

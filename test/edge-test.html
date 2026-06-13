@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Edge Test</title></head>
+<body>
+<script src="../js/parser.js"></script>
+<script src="../js/graph-builder.js"></script>
+<script>
+  fetch("../samples/Logfile.CSV")
+    .then(r => r.text())
+    .then(csv => {
+      const { events } = parseProcmonCSV(csv);
+      const graph = buildGraphFromEvents(events);
+
+      const threadEdges = graph.edges.filter(e => e.label === "new thread");
+      console.log("Total edges:", graph.edges.length);
+      console.log("Thread edges:", threadEdges.length);
+      console.log("Sample thread edges:", threadEdges.slice(0, 5));
+
+      // Find Explorer.EXE nodes with different TIDs
+      const explorerNodes = graph.nodes.filter(n => n.label.includes("Explorer.EXE"));
+      console.log("Explorer.EXE nodes:", explorerNodes.length);
+      console.log("First 10:", explorerNodes.slice(0, 10).map(n => n.id));
+
+      // Check if specific thread edges exist
+      const has3084 = graph.edges.some(e => e.from.startsWith("x:3084") && e.to.startsWith("x:3084"));
+      console.log("Has 3084-to-3084 edge:", has3084);
+
+      document.body.textContent = `Total: ${graph.edges.length} edges, ${threadEdges.length} thread edges, ${explorerNodes.length} Explorer nodes. See console.`;
+    });
+</script>
+</body>
+</html>
