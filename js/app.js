@@ -102,7 +102,7 @@ function buildFilterUI(dataNodes) {
     const count = dataNodes.filter((n) => n.type === type).length;
     const row = document.createElement("button");
     row.type = "button";
-    row.className = "filter-row is-on";
+    row.className = "filter-row" + (activeTypes.has(type) ? " is-on" : "");
     row.dataset.type = type;
     row.innerHTML = `
       <span class="filter-row__icon"><i data-lucide="${TYPE_ICON[type]}"></i></span>
