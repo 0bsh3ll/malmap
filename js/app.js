@@ -349,10 +349,13 @@ if (arrangeBtn) {
         layout: { hierarchical: { enabled: false } },
         physics: { enabled: !layoutLocked },
       });
+      // Wait for physics to start before fitting, otherwise nodes drift
+      // off-screen after the viewport snaps to their starting positions.
+      setTimeout(() => network.fit({ animation: false }), 200);
     }
+    if (arranged) network.fit({ animation: true });
     arrangeBtn.classList.toggle("is-active", arranged);
     arrangeBtn.setAttribute("aria-pressed", String(arranged));
-    network.fit({ animation: true });
   });
 }
 
