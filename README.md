@@ -2,6 +2,8 @@
 
 An interactive process and malware behavior visualizer inspired by ProcDot and Microsoft Defender Blast Radius. Parses ProcMon CSV exports into a real-time, filterable graph.
 
+![MalMap screenshot](screen_shot.png)
+
 ## Features
 
 - **CSV Import** — Drag-and-drop or browse to load a ProcMon CSV file
